@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Search, 
   Plus, 
@@ -13,7 +15,6 @@ import {
   Mail, 
   MapPin,
   Sparkles,
-  MessageSquare,
   User,
   Bot,
   Loader2
@@ -37,81 +38,79 @@ import {
   SheetFooter,
   SheetClose
 } from "@/components/ui/sheet";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-// Mock Data
-const INITIAL_CUSTOMERS = [
-  {
-    id: "C-001",
-    name: "Alice Freeman",
-    email: "alice.f@example.com",
-    phone: "(555) 123-4567",
-    address: "452 Pine Street, Springfield",
-    type: "Residential",
-    tags: ["Repeat", "VIP"],
-    lastService: "Nov 15, 2024",
-    totalSpent: "$1,250",
-    notes: "Gate code is 1234. Dog is friendly."
-  },
-  {
-    id: "C-002",
-    name: "Grandview Apartments",
-    email: "manager@grandview.com",
-    phone: "(555) 987-6543",
-    address: "1000 Hilltop Dr, Springfield",
-    type: "Commercial",
-    tags: ["Contract", "Net-30"],
-    lastService: "Oct 02, 2024",
-    totalSpent: "$4,500",
-    notes: "Call ahead to reserve elevator."
-  },
-  {
-    id: "C-003",
-    name: "Bob Smith",
-    email: "bob.smith@gmail.com",
-    phone: "(555) 555-5555",
-    address: "882 Oak Lane, Riverside",
-    type: "Residential",
-    tags: [],
-    lastService: "N/A",
-    totalSpent: "$0",
-    notes: "New lead from Facebook."
-  }
-];
+import type { Customer, InsertCustomer } from "@shared/schema";
 
 export default function Customers() {
-  const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
-
-  // AI Simulation State
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedData, setParsedData] = useState<any>(null);
+  const [newCustomer, setNewCustomer] = useState<Partial<InsertCustomer>>({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "",
+    zipCode: "",
+    type: "Residential",
+    tags: [],
+    notes: ""
+  });
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: customers = [], isLoading } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+  });
+
+  const createCustomerMutation = useMutation({
+    mutationFn: async (customer: InsertCustomer) => {
+      const response = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(customer),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create customer");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({ title: "Success", description: "Customer added successfully" });
+      setNewCustomerOpen(false);
+      setNewCustomer({ name: "", email: "", phone: "", address: "", city: "", zipCode: "", type: "Residential", tags: [], notes: "" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   const handleAiProcess = () => {
     if (!aiInput.trim()) return;
     
     setIsProcessing(true);
     
-    // SIMULATE AI PARSING DELAY
     setTimeout(() => {
       setIsProcessing(false);
       
-      // Mock parsing logic (In a real app, this would call an LLM API)
-      // We'll just extract what looks like a phone number and name for the demo
-      // or provide a "perfect" mock response for the demo effect.
-      
       const mockParsed = {
-        name: "James Wilson", // In real app, extracted from text
+        name: "James Wilson",
         phone: aiInput.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/)?.[0] || "(555) 000-0000",
         email: aiInput.match(/[\w.-]+@[\w.-]+\.\w+/)?.[0] || "james@example.com",
-        address: "774 Sunset Blvd, Westside",
+        address: "774 Sunset Blvd",
+        city: "Westside",
+        zipCode: "90210",
         notes: "Extracted from conversation: " + aiInput,
-        type: "Residential"
+        type: "Residential",
+        tags: ["AI Added"]
       };
       
       setParsedData(mockParsed);
@@ -120,25 +119,34 @@ export default function Customers() {
 
   const handleSaveParsedCustomer = () => {
     if (parsedData) {
-      const newCustomer = {
-        id: `C-00${customers.length + 1}`,
-        ...parsedData,
-        tags: ["AI Added"],
-        lastService: "N/A",
-        totalSpent: "$0"
-      };
-      setCustomers([newCustomer, ...customers]);
+      createCustomerMutation.mutate(parsedData);
       setAiOpen(false);
       setParsedData(null);
       setAiInput("");
     }
   };
 
+  const handleSaveNewCustomer = () => {
+    if (!newCustomer.name) {
+      toast({ title: "Error", description: "Customer name is required", variant: "destructive" });
+      return;
+    }
+    createCustomerMutation.mutate(newCustomer as InsertCustomer);
+  };
+
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.address.toLowerCase().includes(searchQuery.toLowerCase())
+    (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (c.address && c.address.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -148,7 +156,6 @@ export default function Customers() {
           <p className="text-slate-500">Manage your client book and CRM details.</p>
         </div>
         <div className="flex gap-3">
-          {/* AI Quick Add Trigger */}
           <Dialog open={aiOpen} onOpenChange={setAiOpen}>
             <DialogTrigger asChild>
               <Button className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shadow-md shadow-indigo-200">
@@ -226,7 +233,7 @@ export default function Customers() {
             </DialogContent>
           </Dialog>
 
-          <Sheet>
+          <Sheet open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
             <SheetTrigger asChild>
               <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
                 <Plus className="h-4 w-4" /> New Customer
@@ -251,45 +258,75 @@ export default function Customers() {
                 
                 <div className="space-y-4">
                   <h3 className="font-medium text-sm text-slate-500 uppercase tracking-wider">Contact Info</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="first-name">First name</Label>
-                      <Input id="first-name" placeholder="John" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="last-name">Last name</Label>
-                      <Input id="last-name" placeholder="Doe" />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-name">Full Name *</Label>
+                    <Input 
+                      id="new-name" 
+                      placeholder="John Doe" 
+                      value={newCustomer.name || ""} 
+                      onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" placeholder="john@example.com" />
+                    <Label htmlFor="new-email">Email</Label>
+                    <Input 
+                      id="new-email" 
+                      type="email" 
+                      placeholder="john@example.com" 
+                      value={newCustomer.email || ""} 
+                      onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="(555) 000-0000" />
+                    <Label htmlFor="new-phone">Phone Number</Label>
+                    <Input 
+                      id="new-phone" 
+                      type="tel" 
+                      placeholder="(555) 000-0000" 
+                      value={newCustomer.phone || ""} 
+                      onChange={(e) => setNewCustomer({...newCustomer, phone: e.target.value})}
+                    />
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <h3 className="font-medium text-sm text-slate-500 uppercase tracking-wider">Address & Type</h3>
                   <div className="space-y-2">
-                    <Label htmlFor="address">Street Address</Label>
-                    <Input id="address" placeholder="123 Main St" />
+                    <Label htmlFor="new-address">Street Address</Label>
+                    <Input 
+                      id="new-address" 
+                      placeholder="123 Main St" 
+                      value={newCustomer.address || ""} 
+                      onChange={(e) => setNewCustomer({...newCustomer, address: e.target.value})}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input id="city" placeholder="Springfield" />
+                      <Label htmlFor="new-city">City</Label>
+                      <Input 
+                        id="new-city" 
+                        placeholder="Springfield" 
+                        value={newCustomer.city || ""} 
+                        onChange={(e) => setNewCustomer({...newCustomer, city: e.target.value})}
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="zip">Zip Code</Label>
-                      <Input id="zip" placeholder="62704" />
+                      <Label htmlFor="new-zip">Zip Code</Label>
+                      <Input 
+                        id="new-zip" 
+                        placeholder="62704" 
+                        value={newCustomer.zipCode || ""} 
+                        onChange={(e) => setNewCustomer({...newCustomer, zipCode: e.target.value})}
+                      />
                     </div>
                   </div>
                    <div className="space-y-2">
-                    <Label htmlFor="type">Customer Type</Label>
-                    <select className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Label htmlFor="new-type">Customer Type</Label>
+                    <select 
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={newCustomer.type}
+                      onChange={(e) => setNewCustomer({...newCustomer, type: e.target.value})}
+                    >
                       <option>Residential</option>
                       <option>Commercial</option>
                       <option>Realtor / Broker</option>
@@ -301,19 +338,24 @@ export default function Customers() {
                 <div className="space-y-4">
                   <h3 className="font-medium text-sm text-slate-500 uppercase tracking-wider">Additional Details</h3>
                   <div className="space-y-2">
-                    <Label htmlFor="notes">Internal Notes</Label>
-                    <Textarea id="notes" placeholder="Gate codes, dog names, special instructions..." />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tags">Tags (comma separated)</Label>
-                    <Input id="tags" placeholder="VIP, Repeat, Lead..." />
+                    <Label htmlFor="new-notes">Internal Notes</Label>
+                    <Textarea 
+                      id="new-notes" 
+                      placeholder="Gate codes, dog names, special instructions..." 
+                      value={newCustomer.notes || ""} 
+                      onChange={(e) => setNewCustomer({...newCustomer, notes: e.target.value})}
+                    />
                   </div>
                 </div>
               </div>
               <SheetFooter>
-                <SheetClose asChild>
-                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 w-full">Save Customer</Button>
-                </SheetClose>
+                <Button 
+                  onClick={handleSaveNewCustomer} 
+                  className="bg-blue-600 hover:bg-blue-700 w-full"
+                  disabled={createCustomerMutation.isPending}
+                >
+                  {createCustomerMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Customer"}
+                </Button>
               </SheetFooter>
             </SheetContent>
           </Sheet>
@@ -342,7 +384,7 @@ export default function Customers() {
           {filteredCustomers.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-16 text-center px-4">
                <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                 <UsersIcon className="h-8 w-8 text-slate-300" />
+                 <User className="h-8 w-8 text-slate-300" />
                </div>
                <h3 className="text-lg font-medium text-slate-900">No customers found</h3>
                <p className="text-slate-500 max-w-sm mt-1">Try adjusting your search or add a new customer to your book.</p>
@@ -362,7 +404,7 @@ export default function Customers() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-lg text-slate-900">{customer.name}</h3>
-                        {customer.tags.map(tag => (
+                        {customer.tags && customer.tags.map(tag => (
                           <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 h-5 font-normal bg-slate-100 text-slate-500">
                             {tag}
                           </Badge>
@@ -370,27 +412,33 @@ export default function Customers() {
                       </div>
                       
                       <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 mt-1 text-sm text-slate-500">
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="h-3.5 w-3.5 text-slate-400" />
-                          {customer.email}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Phone className="h-3.5 w-3.5 text-slate-400" />
-                          {customer.phone}
-                        </div>
+                        {customer.email && (
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="h-3.5 w-3.5 text-slate-400" />
+                            {customer.email}
+                          </div>
+                        )}
+                        {customer.phone && (
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 text-slate-400" />
+                            {customer.phone}
+                          </div>
+                        )}
                       </div>
                       
-                      <div className="flex items-center gap-1.5 mt-1 text-sm text-slate-500">
-                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                        {customer.address}
-                      </div>
+                      {customer.address && (
+                        <div className="flex items-center gap-1.5 mt-1 text-sm text-slate-500">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                          {customer.address}
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between w-full md:w-auto gap-8 pl-16 md:pl-0 mt-2 md:mt-0">
                     <div className="text-left md:text-right">
                        <p className="text-xs text-slate-400 uppercase font-medium">Lifetime Value</p>
-                       <p className="font-heading font-bold text-lg text-slate-900">{customer.totalSpent}</p>
+                       <p className="font-heading font-bold text-lg text-slate-900">${customer.totalSpent || "0.00"}</p>
                     </div>
                     <Button variant="ghost" size="icon" className="text-slate-400 group-hover:text-slate-600">
                       <MoreHorizontal className="h-5 w-5" />
@@ -405,26 +453,4 @@ export default function Customers() {
       </ScrollArea>
     </div>
   );
-}
-
-function UsersIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  )
 }

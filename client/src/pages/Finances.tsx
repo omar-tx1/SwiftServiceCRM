@@ -4,53 +4,86 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { ArrowUpRight, ArrowDownRight, DollarSign, Wallet, CreditCard, Plus } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import type { Transaction, InsertTransaction } from "@shared/schema";
+import { format } from "date-fns";
 
-const initialData = [
-  { name: 'Labor', value: 3500, color: '#3b82f6' }, // blue-500
-  { name: 'Disposal Fees', value: 2100, color: '#f97316' }, // orange-500
-  { name: 'Fuel', value: 850, color: '#ef4444' }, // red-500
-  { name: 'Equipment', value: 450, color: '#10b981' }, // green-500
-  { name: 'Marketing', value: 600, color: '#8b5cf6' }, // violet-500
-];
-
-const initialTransactions = [
-  { label: "Job #1024 - Sarah Johnson", date: "Today, 2:30 PM", amount: "+$450.00", type: "income" },
-  { label: "Dump Fee - Metro Waste", date: "Today, 1:15 PM", amount: "-$125.00", type: "expense" },
-  { label: "Fuel - Shell Station", date: "Today, 9:45 AM", amount: "-$85.50", type: "expense" },
-  { label: "Job #1022 - David Wong", date: "Yesterday", amount: "+$650.00", type: "income" },
-  { label: "Equipment Maintenance", date: "Yesterday", amount: "-$240.00", type: "expense" },
+const expenseCategories = [
+  { name: 'Labor', color: '#3b82f6' },
+  { name: 'Disposal Fees', color: '#f97316' },
+  { name: 'Fuel', color: '#ef4444' },
+  { name: 'Equipment', color: '#10b981' },
+  { name: 'Marketing', color: '#8b5cf6' },
+  { name: 'Other', color: '#64748b' },
 ];
 
 export default function Finances() {
-  const [transactions, setTransactions] = useState(initialTransactions);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
   const [newExpense, setNewExpense] = useState({ description: "", amount: "", category: "Fuel" });
+  
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: transactions = [] } = useQuery<Transaction[]>({
+    queryKey: ["/api/transactions"],
+  });
+
+  const createTransactionMutation = useMutation({
+    mutationFn: async (transaction: InsertTransaction) => {
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(transaction),
+      });
+      if (!response.ok) throw new Error("Failed to create transaction");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      toast({ title: "Success", description: "Expense logged successfully" });
+    },
+  });
 
   const handleAddExpense = () => {
     if (!newExpense.description || !newExpense.amount) return;
 
-    const expense = {
-      label: `${newExpense.description} - ${newExpense.category}`,
-      date: "Just now",
-      amount: `-$${parseFloat(newExpense.amount).toFixed(2)}`,
-      type: "expense"
+    const transaction: InsertTransaction = {
+      description: newExpense.description,
+      amount: newExpense.amount,
+      type: "expense",
+      category: newExpense.category,
+      date: new Date(),
+      jobId: null,
     };
 
-    setTransactions([expense, ...transactions]);
+    createTransactionMutation.mutate(transaction);
     setExpenseDialogOpen(false);
     setNewExpense({ description: "", amount: "", category: "Fuel" });
   };
+
+  // Calculate totals
+  const totalRevenue = transactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+  
+  const totalExpenses = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+  
+  const netProfit = totalRevenue - totalExpenses;
+
+  // Expense breakdown by category
+  const expenseBreakdown = expenseCategories.map(cat => ({
+    name: cat.name,
+    value: transactions
+      .filter(t => t.type === 'expense' && t.category === cat.name)
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0),
+    color: cat.color
+  })).filter(item => item.value > 0);
 
   return (
     <div className="space-y-6">
@@ -111,12 +144,9 @@ export default function Finances() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Fuel">Fuel</SelectItem>
-                      <SelectItem value="Disposal Fees">Disposal Fees</SelectItem>
-                      <SelectItem value="Equipment">Equipment</SelectItem>
-                      <SelectItem value="Marketing">Marketing</SelectItem>
-                      <SelectItem value="Labor">Labor</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      {expenseCategories.map(cat => (
+                        <SelectItem key={cat.name} value={cat.name}>{cat.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -144,7 +174,7 @@ export default function Finances() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <FinancialCard 
           title="Total Revenue" 
-          amount="$12,450.00" 
+          amount={`$${totalRevenue.toFixed(2)}`} 
           change="+12.5%" 
           isPositive={true}
           icon={DollarSign}
@@ -152,17 +182,17 @@ export default function Finances() {
         />
         <FinancialCard 
           title="Total Expenses" 
-          amount="$7,500.00" 
+          amount={`$${totalExpenses.toFixed(2)}`} 
           change="+5.2%" 
-          isPositive={false} // Expenses going up is usually "bad" or just neutral
+          isPositive={false}
           icon={Wallet}
           color="bg-red-500"
         />
         <FinancialCard 
           title="Net Profit" 
-          amount="$4,950.00" 
+          amount={`$${netProfit.toFixed(2)}`} 
           change="+22.4%" 
-          isPositive={true}
+          isPositive={netProfit >= 0}
           icon={CreditCard}
           color="bg-green-500"
         />
@@ -175,28 +205,34 @@ export default function Finances() {
             <CardDescription>Where your money is going this month.</CardDescription>
           </CardHeader>
           <CardContent className="h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={initialData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={80}
-                  outerRadius={110}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {initialData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: number) => [`$${value}`, 'Amount']}
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                />
-                <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
-            </ResponsiveContainer>
+            {expenseBreakdown.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={expenseBreakdown}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={80}
+                    outerRadius={110}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {expenseBreakdown.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: number) => [`$${value.toFixed(2)}`, 'Amount']}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400">
+                <p>No expense data yet</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -207,22 +243,28 @@ export default function Finances() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-               {transactions.map((t, i) => (
-                 <div key={i} className="flex items-center justify-between p-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors rounded-lg">
-                   <div className="flex items-center gap-3">
-                     <div className={`h-10 w-10 rounded-full flex items-center justify-center ${t.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                       {t.type === 'income' ? <ArrowDownRight className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
-                     </div>
-                     <div>
-                       <p className="text-sm font-medium text-slate-900">{t.label}</p>
-                       <p className="text-xs text-slate-500">{t.date}</p>
-                     </div>
-                   </div>
-                   <span className={`font-bold ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
-                     {t.amount}
-                   </span>
+               {transactions.length === 0 ? (
+                 <div className="text-center py-8 text-slate-400">
+                   <p>No transactions yet</p>
                  </div>
-               ))}
+               ) : (
+                 transactions.slice(0, 5).map((t) => (
+                   <div key={t.id} className="flex items-center justify-between p-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors rounded-lg">
+                     <div className="flex items-center gap-3">
+                       <div className={`h-10 w-10 rounded-full flex items-center justify-center ${t.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                         {t.type === 'income' ? <ArrowDownRight className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
+                       </div>
+                       <div>
+                         <p className="text-sm font-medium text-slate-900">{t.description}</p>
+                         <p className="text-xs text-slate-500">{format(new Date(t.date), 'MMM d, yyyy')}</p>
+                       </div>
+                     </div>
+                     <span className={`font-bold ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
+                       {t.type === 'income' ? '+' : '-'}${parseFloat(t.amount).toFixed(2)}
+                     </span>
+                   </div>
+                 ))
+               )}
             </div>
           </CardContent>
         </Card>
