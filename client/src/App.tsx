@@ -16,6 +16,8 @@ import Settings from "@/pages/Settings";
 
 import Customers from "@/pages/Customers";
 
+import Finances from "@/pages/Finances";
+
 function Router() {
   return (
     <Layout>
@@ -25,6 +27,7 @@ function Router() {
         <Route path="/schedule" component={Schedule} />
         <Route path="/jobs" component={Jobs} />
         <Route path="/customers" component={Customers} />
+        <Route path="/finances" component={Finances} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

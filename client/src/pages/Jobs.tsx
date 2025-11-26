@@ -11,7 +11,10 @@ import {
   Filter 
 } from "lucide-react";
 
+import { useToast } from "@/hooks/use-toast";
+
 export default function Jobs() {
+  const { toast } = useToast();
   const jobs = [
     {
       id: "JOB-1024",
@@ -67,7 +70,15 @@ export default function Jobs() {
           <h1 className="font-heading text-3xl font-bold text-slate-900">Jobs</h1>
           <p className="text-slate-500">Manage your active and past jobs.</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+          onClick={() => {
+            toast({
+              title: "Export Started",
+              description: "Your job report is being generated and will start downloading shortly.",
+            });
+          }}
+        >
           Export Report
         </Button>
       </div>

@@ -24,8 +24,12 @@ export default function Dashboard() {
           <p className="text-slate-500 mt-1">Here's what's happening with your business today.</p>
         </div>
         <div className="flex gap-3">
-           <Button variant="outline" className="border-slate-300 bg-white">View Calendar</Button>
-           <Button className="bg-orange-500 hover:bg-orange-600 text-white border-none">Create Quote</Button>
+           <Link href="/schedule">
+             <Button variant="outline" className="border-slate-300 bg-white">View Calendar</Button>
+           </Link>
+           <Link href="/quotes">
+             <Button className="bg-orange-500 hover:bg-orange-600 text-white border-none">Create Quote</Button>
+           </Link>
         </div>
       </div>
 

@@ -9,7 +9,8 @@ import {
   Plus,
   Truck,
   Menu,
-  LogOut
+  LogOut,
+  DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -25,6 +26,7 @@ const Sidebar = ({ className = "", onClose }: { className?: string, onClose?: ()
     { icon: FileText, label: "Quotes", href: "/quotes" },
     { icon: Briefcase, label: "Jobs", href: "/jobs" },
     { icon: Users, label: "Customers", href: "/customers" },
+    { icon: DollarSign, label: "Finances", href: "/finances" },
     { icon: Settings, label: "Settings", href: "/settings" },
   ];
 
@@ -111,10 +113,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-sm hover:shadow-md transition-all">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">New Job</span>
-            </Button>
+            <Link href="/schedule">
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-sm hover:shadow-md transition-all">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">New Job</span>
+              </Button>
+            </Link>
           </div>
         </header>
 
