@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,6 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Building2, 
   CreditCard, 
@@ -16,10 +20,113 @@ import {
   Mail,
   Phone,
   MapPin,
-  Trash2
+  Trash2,
+  Sparkles,
+  Upload,
+  Loader2
 } from "lucide-react";
 
 export default function Settings() {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoGenerationOpen, setLogoGenerationOpen] = useState(false);
+  const [logoPrompt, setLogoPrompt] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [useUploadedAsInspiration, setUseUploadedAsInspiration] = useState(false);
+  
+  const { toast } = useToast();
+
+  const generateLogoMutation = useMutation({
+    mutationFn: async (prompt: string) => {
+      const response = await fetch("/api/generate-logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate logo");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setLogoUrl(data.logoUrl);
+      toast({ title: "Success", description: "Logo generated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const generateLogoWithInspiration = useMutation({
+    mutationFn: async (data: { prompt: string; imageBase64: string }) => {
+      const response = await fetch("/api/generate-logo-with-inspiration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate logo");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setLogoUrl(data.logoUrl);
+      toast({ title: "Success", description: "Logo generated with inspiration successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      setUploadedFile(file);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setUploadedImageUrl(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleGenerateLogo = () => {
+    if (!logoPrompt.trim()) {
+      toast({ title: "Error", description: "Please enter a logo description", variant: "destructive" });
+      return;
+    }
+    generateLogoMutation.mutate(logoPrompt);
+  };
+
+  const handleGenerateWithInspiration = () => {
+    if (!logoPrompt.trim()) {
+      toast({ title: "Error", description: "Please enter a logo description", variant: "destructive" });
+      return;
+    }
+    if (!uploadedImageUrl) {
+      toast({ title: "Error", description: "Please upload an image for inspiration", variant: "destructive" });
+      return;
+    }
+    generateLogoWithInspiration.mutate({
+      prompt: logoPrompt,
+      imageBase64: uploadedImageUrl.split(",")[1], // Remove data:image/...;base64, prefix
+    });
+  };
+
+  const handleUploadLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setLogoUrl(event.target?.result as string);
+        toast({ title: "Success", description: "Logo uploaded successfully" });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-10">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -97,15 +204,115 @@ export default function Settings() {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle>Branding</CardTitle>
-              <CardDescription>Upload your logo to customize your documents.</CardDescription>
+              <CardDescription>Upload or generate a logo for your business.</CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center gap-6">
-              <div className="h-24 w-24 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center">
-                <Truck className="h-8 w-8 text-slate-400" />
-              </div>
-              <div className="space-y-2">
-                <Button variant="outline" className="bg-white">Upload Logo</Button>
-                <p className="text-xs text-slate-500">Recommended: PNG or JPG, at least 400x400px</p>
+            <CardContent className="space-y-6">
+              <div className="flex items-center gap-6">
+                <div className="h-24 w-24 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                  ) : (
+                    <Truck className="h-8 w-8 text-slate-400" />
+                  )}
+                </div>
+                <div className="space-y-3 flex-1">
+                  <div className="flex gap-2 flex-wrap">
+                    <label>
+                      <Button variant="outline" className="bg-white cursor-pointer" asChild>
+                        <span><Upload className="h-4 w-4 mr-2" /> Upload Logo</span>
+                      </Button>
+                      <input type="file" accept="image/*" onChange={handleUploadLogo} className="hidden" />
+                    </label>
+                    <Dialog open={logoGenerationOpen} onOpenChange={setLogoGenerationOpen}>
+                      <DialogTrigger asChild>
+                        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                          <Sparkles className="h-4 w-4" /> Generate with AI
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[500px]">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2">
+                            <Sparkles className="h-5 w-5 text-indigo-600" />
+                            AI Logo Generator
+                          </DialogTitle>
+                          <DialogDescription>
+                            Create a custom logo using AI or draw inspiration from an existing logo.
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-6 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="logo-prompt">Logo Description *</Label>
+                            <Textarea
+                              id="logo-prompt"
+                              placeholder="e.g., A junk removal company logo with a truck and simple, modern design. Use blue and orange colors."
+                              className="min-h-[100px]"
+                              value={logoPrompt}
+                              onChange={(e) => setLogoPrompt(e.target.value)}
+                            />
+                            <p className="text-xs text-slate-500">Describe the style, elements, and colors you want in your logo.</p>
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                id="use-inspiration"
+                                checked={useUploadedAsInspiration}
+                                onChange={(e) => setUseUploadedAsInspiration(e.target.checked)}
+                                className="w-4 h-4 rounded border-slate-300"
+                              />
+                              <Label htmlFor="use-inspiration" className="cursor-pointer">Use existing logo as inspiration</Label>
+                            </div>
+
+                            {useUploadedAsInspiration && (
+                              <div className="space-y-3 p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                                <p className="text-sm text-slate-700">Upload a logo to use as inspiration:</p>
+                                <div className="flex items-center gap-2">
+                                  {uploadedImageUrl ? (
+                                    <div className="h-16 w-16 rounded border border-indigo-300 overflow-hidden flex-shrink-0">
+                                      <img src={uploadedImageUrl} alt="Inspiration" className="h-full w-full object-cover" />
+                                    </div>
+                                  ) : null}
+                                  <label>
+                                    <Button variant="outline" size="sm" className="cursor-pointer" asChild>
+                                      <span><Upload className="h-4 w-4 mr-2" /> Upload Image</span>
+                                    </Button>
+                                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                                  </label>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setLogoGenerationOpen(false)}>Cancel</Button>
+                          <Button 
+                            onClick={useUploadedAsInspiration ? handleGenerateWithInspiration : handleGenerateLogo}
+                            disabled={useUploadedAsInspiration ? generateLogoWithInspiration.isPending : generateLogoMutation.isPending}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          >
+                            {useUploadedAsInspiration ? generateLogoWithInspiration.isPending : generateLogoMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                Generate Logo
+                              </>
+                            )}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <p className="text-xs text-slate-500">PNG, JPG or WebP. Recommended: 400x400px or larger</p>
+                </div>
               </div>
             </CardContent>
           </Card>
