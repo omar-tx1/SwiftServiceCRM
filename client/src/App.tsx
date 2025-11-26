@@ -14,6 +14,8 @@ import Jobs from "@/pages/Jobs";
 
 import Settings from "@/pages/Settings";
 
+import Customers from "@/pages/Customers";
+
 function Router() {
   return (
     <Layout>
@@ -22,10 +24,7 @@ function Router() {
         <Route path="/quotes" component={Quotes} />
         <Route path="/schedule" component={Schedule} />
         <Route path="/jobs" component={Jobs} />
-        {/* Placeholders for other routes */}
-        <Route path="/customers">
-          <div className="flex items-center justify-center h-full text-slate-400">Customers Page Placeholder</div>
-        </Route>
+        <Route path="/customers" component={Customers} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>
