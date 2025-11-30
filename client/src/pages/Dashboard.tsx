@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   DollarSign, 
   Briefcase, 
@@ -9,12 +13,71 @@ import {
   CheckCircle2,
   MapPin,
   MoreHorizontal,
-  Users
+  Users,
+  Loader2
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { insertTransactionSchema } from "@shared/schema";
+import { fromZodError } from "zod-validation-error";
 import truckImg from "@assets/generated_images/clean_isometric_junk_removal_truck_illustration.png";
 
 export default function Dashboard() {
+  const [, setLocation] = useLocation();
+  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [newExpense, setNewExpense] = useState({
+    description: "",
+    amount: "",
+    category: "Supplies",
+  });
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: jobs = [] } = useQuery<any[]>({
+    queryKey: ["/api/jobs"],
+  });
+
+  const createTransactionMutation = useMutation({
+    mutationFn: async (transaction: any) => {
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(transaction),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to log expense");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      toast({ title: "Success", description: "Expense logged successfully" });
+      setExpenseDialogOpen(false);
+      setNewExpense({ description: "", amount: "", category: "Supplies" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleLogExpense = () => {
+    if (!newExpense.description || !newExpense.amount) {
+      toast({ title: "Error", description: "Please fill in all fields", variant: "destructive" });
+      return;
+    }
+
+    createTransactionMutation.mutate({
+      description: newExpense.description,
+      amount: parseFloat(newExpense.amount),
+      type: "expense",
+      category: newExpense.category,
+      jobId: null,
+    });
+  };
+
   return (
     <div className="space-y-8">
       {/* Hero Section */}
@@ -44,9 +107,9 @@ export default function Dashboard() {
         />
         <StatCard 
           title="Active Jobs" 
-          value="8" 
+          value={jobs.length.toString()} 
           icon={Briefcase} 
-          trend="3 in progress"
+          trend={`${jobs.filter(j => j.status === "Pending").length} pending`}
           trendUp={true}
         />
         <StatCard 
@@ -78,30 +141,26 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-4">
-            <JobCard 
-              time="09:00 AM" 
-              client="Sarah Johnson" 
-              address="123 Maple Ave, Springfield"
-              type="Full Truck Load"
-              status="In Progress"
-              price="$450"
-            />
-            <JobCard 
-              time="11:30 AM" 
-              client="Mike Peters" 
-              address="450 Industrial Park, Unit 4B"
-              type="Construction Debris"
-              status="Scheduled"
-              price="$850"
-            />
-            <JobCard 
-              time="02:00 PM" 
-              client="Estate Cleanout" 
-              address="882 Oak Lane, Riverside"
-              type="Estimate Only"
-              status="Pending"
-              price="TBD"
-            />
+            {jobs.length === 0 ? (
+              <Card className="border-slate-200 shadow-sm">
+                <CardContent className="p-8 text-center">
+                  <Briefcase className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                  <p className="text-slate-500">No jobs scheduled yet</p>
+                </CardContent>
+              </Card>
+            ) : (
+              jobs.slice(0, 3).map((job) => (
+                <JobCard 
+                  key={job.id}
+                  time={new Date(job.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  client={job.customerName} 
+                  address={job.address}
+                  type={job.type}
+                  status={job.status}
+                  price={job.price ? `$${job.price}` : "TBD"}
+                />
+              ))
+            )}
           </div>
         </div>
 
@@ -113,13 +172,85 @@ export default function Dashboard() {
               <CardTitle className="font-heading text-xl">Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 relative z-10">
-              <Button className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-none">
+              <Button 
+                onClick={() => setLocation("/quotes")}
+                className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-none"
+              >
                 <FileText className="mr-2 h-4 w-4" /> Draft New Quote
               </Button>
-              <Button className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-none">
-                <Clock className="mr-2 h-4 w-4" /> Log Expenses
-              </Button>
-              <Button className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-none">
+              <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-none">
+                    <Clock className="mr-2 h-4 w-4" /> Log Expenses
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[400px]">
+                  <DialogHeader>
+                    <DialogTitle>Log Expense</DialogTitle>
+                    <DialogDescription>
+                      Record a business expense or cost.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="desc">Description *</Label>
+                      <Input 
+                        id="desc"
+                        placeholder="Fuel, supplies, equipment..." 
+                        value={newExpense.description}
+                        onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="amt">Amount *</Label>
+                      <Input 
+                        id="amt"
+                        type="number" 
+                        step="0.01"
+                        placeholder="0.00" 
+                        value={newExpense.amount}
+                        onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cat">Category</Label>
+                      <select 
+                        id="cat"
+                        value={newExpense.category}
+                        onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
+                        className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option>Supplies</option>
+                        <option>Fuel</option>
+                        <option>Equipment</option>
+                        <option>Labor</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setExpenseDialogOpen(false)}>Cancel</Button>
+                    <Button 
+                      onClick={handleLogExpense}
+                      disabled={createTransactionMutation.isPending}
+                      className="bg-orange-500 hover:bg-orange-600 text-white"
+                    >
+                      {createTransactionMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Logging...
+                        </>
+                      ) : (
+                        "Log Expense"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button 
+                onClick={() => toast({ title: "Feature Coming Soon", description: "Crew member management coming in the next update" })}
+                className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-none"
+              >
                 <Users className="mr-2 h-4 w-4" /> Add Crew Member
               </Button>
             </CardContent>
@@ -187,7 +318,7 @@ function JobCard({ time, client, address, type, status, price }: any) {
         <div className="flex gap-4 items-center">
           <div className="flex flex-col items-center justify-center w-16 h-16 bg-slate-50 rounded-lg border border-slate-100 group-hover:border-blue-100 group-hover:bg-blue-50 transition-colors">
             <span className="text-xs font-bold text-slate-400 uppercase">Time</span>
-            <span className="font-heading text-xl font-bold text-slate-900">{time.split(' ')[0]}</span>
+            <span className="font-heading text-xl font-bold text-slate-900">{time.split(':')[0]}</span>
             <span className="text-xs font-bold text-slate-400">{time.split(' ')[1]}</span>
           </div>
           
