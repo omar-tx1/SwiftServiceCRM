@@ -17,7 +17,9 @@ import {
   Sparkles,
   User,
   Bot,
-  Loader2
+  Loader2,
+  Edit,
+  Trash2
 } from "lucide-react";
 import {
   Dialog,
@@ -38,6 +40,12 @@ import {
   SheetFooter,
   SheetClose
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,6 +55,8 @@ export default function Customers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
+  const [selectedCustomerProfile, setSelectedCustomerProfile] = useState<Customer | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedData, setParsedData] = useState<any>(null);
@@ -87,6 +97,23 @@ export default function Customers() {
       toast({ title: "Success", description: "Customer added successfully" });
       setNewCustomerOpen(false);
       setNewCustomer({ name: "", email: "", phone: "", address: "", city: "", zipCode: "", type: "Residential", tags: [], notes: "" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteCustomerMutation = useMutation({
+    mutationFn: async (customerId: number) => {
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Failed to delete customer");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({ title: "Success", description: "Customer deleted" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -394,7 +421,10 @@ export default function Customers() {
               <div key={customer.id} className="p-4 hover:bg-slate-50 transition-colors group cursor-pointer">
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-4 flex-1 cursor-pointer" onClick={() => {
+                    setSelectedCustomerProfile(customer);
+                    setProfileOpen(true);
+                  }}>
                     <Avatar className="h-12 w-12 border border-slate-200">
                       <AvatarFallback className="bg-blue-50 text-blue-600 font-bold">
                         {customer.name.split(' ').map(n => n[0]).join('')}
@@ -440,9 +470,27 @@ export default function Customers() {
                        <p className="text-xs text-slate-400 uppercase font-medium">Lifetime Value</p>
                        <p className="font-heading font-bold text-lg text-slate-900">${customer.totalSpent || "0.00"}</p>
                     </div>
-                    <Button variant="ghost" size="icon" className="text-slate-400 group-hover:text-slate-600">
-                      <MoreHorizontal className="h-5 w-5" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-slate-400 group-hover:text-slate-600">
+                          <MoreHorizontal className="h-5 w-5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => {
+                          setSelectedCustomerProfile(customer);
+                          setProfileOpen(true);
+                        }}>
+                          <User className="h-4 w-4 mr-2" /> View Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Edit className="h-4 w-4 mr-2" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => deleteCustomerMutation.mutate(customer.id)} className="text-red-600">
+                          <Trash2 className="h-4 w-4 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                 </div>
@@ -451,6 +499,60 @@ export default function Customers() {
           )}
         </div>
       </ScrollArea>
+
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Customer Profile</DialogTitle>
+          </DialogHeader>
+          {selectedCustomerProfile && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16">
+                  <AvatarFallback className="bg-blue-50 text-blue-600 text-lg font-bold">
+                    {selectedCustomerProfile.name.split(' ').map(n => n[0]).join('')}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">{selectedCustomerProfile.name}</h2>
+                  <p className="text-sm text-slate-500">{selectedCustomerProfile.type}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 py-4 border-y border-slate-200">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Email</p>
+                  <p className="text-sm mt-1">{selectedCustomerProfile.email || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Phone</p>
+                  <p className="text-sm mt-1">{selectedCustomerProfile.phone || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Address</p>
+                  <p className="text-sm mt-1">{selectedCustomerProfile.address || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">City</p>
+                  <p className="text-sm mt-1">{selectedCustomerProfile.city || "—"}</p>
+                </div>
+              </div>
+
+              {selectedCustomerProfile.notes && (
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Notes</p>
+                  <p className="text-sm mt-2 text-slate-700">{selectedCustomerProfile.notes}</p>
+                </div>
+              )}
+
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <p className="text-xs text-slate-500 uppercase font-bold">Lifetime Value</p>
+                <p className="text-2xl font-heading font-bold text-slate-900 mt-1">${selectedCustomerProfile.totalSpent || "0.00"}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

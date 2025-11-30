@@ -223,6 +223,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ SMS ============
+  app.post("/api/send-sms", async (req, res) => {
+    try {
+      const { phone, message } = req.body;
+      if (!phone || !message) {
+        return res.status(400).json({ error: "Phone and message are required" });
+      }
+      // Mock SMS sending - in production this would use Twilio
+      console.log(`SMS sent to ${phone}: ${message}`);
+      res.json({ success: true, message: "SMS sent successfully" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

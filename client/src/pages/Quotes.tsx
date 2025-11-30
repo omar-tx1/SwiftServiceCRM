@@ -7,6 +7,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { 
   Search, 
   Plus, 
@@ -16,7 +22,8 @@ import {
   Send, 
   FileCheck,
   Trash2,
-  Loader2
+  Loader2,
+  Eye
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import type { Quote, InsertQuote } from "@shared/schema";
@@ -25,6 +32,8 @@ export default function Quotes() {
   const [newQuoteOpen, setNewQuoteOpen] = useState(false);
   const [selectedVolume, setSelectedVolume] = useState<"1/8" | "1/4" | "1/2" | "Full" | null>(null);
   const [selectedSurcharges, setSelectedSurcharges] = useState<string[]>([]);
+  const [viewQuoteOpen, setViewQuoteOpen] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [newQuote, setNewQuote] = useState<Partial<InsertQuote>>({
     customerName: "",
     customerEmail: "",
@@ -59,6 +68,41 @@ export default function Quotes() {
       toast({ title: "Success", description: "Quote created successfully" });
       setNewQuoteOpen(false);
       resetForm();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteQuoteMutation = useMutation({
+    mutationFn: async (quoteId: number) => {
+      const response = await fetch(`/api/quotes/${quoteId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Failed to delete quote");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotes"] });
+      toast({ title: "Success", description: "Quote deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const sendSmsMutation = useMutation({
+    mutationFn: async (data: { quoteId: number; phone: string; message: string }) => {
+      const response = await fetch("/api/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error("Failed to send SMS");
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "SMS sent successfully" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -134,6 +178,20 @@ export default function Quotes() {
       validUntil: null,
       customerId: null,
     } as InsertQuote);
+  };
+
+  const handleSendSms = (quote: Quote) => {
+    if (!quote.customerPhone) {
+      toast({ title: "Error", description: "No phone number on file", variant: "destructive" });
+      return;
+    }
+
+    const message = `Hi ${quote.customerName}, here's your estimate: ${quote.items.join(", ")} - Total: $${parseFloat(quote.total).toFixed(2)}. Reply to confirm.`;
+    sendSmsMutation.mutate({
+      quoteId: quote.id,
+      phone: quote.customerPhone,
+      message,
+    });
   };
 
   return (
@@ -309,12 +367,13 @@ export default function Quotes() {
             quotes.map((quote) => (
               <QuoteCard 
                 key={quote.id}
-                id={`#Q-${quote.id}`}
-                client={quote.customerName}
-                date={new Date(quote.createdAt).toLocaleDateString()}
-                items={quote.items}
-                total={`$${parseFloat(quote.total).toFixed(2)}`}
-                status={quote.status}
+                quote={quote}
+                onView={() => {
+                  setSelectedQuote(quote);
+                  setViewQuoteOpen(true);
+                }}
+                onDelete={() => deleteQuoteMutation.mutate(quote.id)}
+                onSendSms={() => handleSendSms(quote)}
               />
             ))
           )}
@@ -338,11 +397,14 @@ export default function Quotes() {
                     { label: "1/2", price: "$450" },
                     { label: "Full", price: "$800" },
                   ].map((tier) => (
-                    <button key={tier.label} className="flex flex-col items-center justify-center p-2 border rounded-md hover:border-blue-500 hover:bg-blue-50 transition-all focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <button 
+                      key={tier.label} 
+                      onClick={() => setSelectedVolume(tier.label as any)}
+                      className={`flex flex-col items-center justify-center p-2 border rounded-md transition-all ${selectedVolume === tier.label ? 'border-blue-500 bg-blue-50' : 'hover:border-blue-500 hover:bg-blue-50 border-slate-200'}`}
+                    >
                       <div className="h-8 w-12 bg-slate-200 rounded-sm mb-2 relative overflow-hidden">
-                        {/* Mock visualization of fullness */}
                         <div 
-                          className="absolute bottom-0 left-0 right-0 bg-blue-500 transition-all" 
+                          className="absolute bottom-0 left-0 right-0 bg-blue-500" 
                           style={{ 
                             height: tier.label === "Full" ? '100%' : 
                                     tier.label === "1/2" ? '50%' : 
@@ -362,21 +424,33 @@ export default function Quotes() {
               <div className="space-y-3">
                 <Label>Surcharges / Extras</Label>
                 <div className="space-y-2">
-                  {["Mattress ($25)", "Appliance ($35)", "Tires ($10/ea)", "Upstairs Labor ($50)"].map((item) => (
-                    <div key={item} className="flex items-center space-x-2">
-                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" id={`check-${item}`} />
-                      <label htmlFor={`check-${item}`} className="text-sm text-slate-700 font-medium cursor-pointer select-none">{item}</label>
+                  {Object.entries(surcharges).map(([label, price]) => (
+                    <div key={label} className="flex items-center space-x-2">
+                      <input 
+                        type="checkbox" 
+                        id={`check-${label}`} 
+                        checked={selectedSurcharges.includes(label)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSurcharges([...selectedSurcharges, label]);
+                          } else {
+                            setSelectedSurcharges(selectedSurcharges.filter(s => s !== label));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                      />
+                      <label htmlFor={`check-${label}`} className="text-sm text-slate-700 font-medium cursor-pointer select-none">{label}</label>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded-lg flex justify-between items-end border border-slate-100">
+              <div className="bg-slate-50 p-4 rounded-lg flex flex-col gap-3 border border-slate-100">
                 <div>
                   <p className="text-xs text-slate-500 uppercase font-bold">Estimated Total</p>
-                  <p className="text-3xl font-heading font-bold text-slate-900">$0.00</p>
+                  <p className="text-3xl font-heading font-bold text-slate-900">${calculateTotal()}</p>
                 </div>
-                <Button size="sm" className="bg-slate-900 text-white">
+                <Button size="sm" className="bg-slate-900 text-white w-full" onClick={handleCreateQuote}>
                   Create Draft
                 </Button>
               </div>
@@ -385,11 +459,63 @@ export default function Quotes() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={viewQuoteOpen} onOpenChange={setViewQuoteOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Quote Details</DialogTitle>
+          </DialogHeader>
+          {selectedQuote && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Customer</p>
+                  <p className="text-sm font-medium">{selectedQuote.customerName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Status</p>
+                  <p className="text-sm font-medium">{selectedQuote.status}</p>
+                </div>
+              </div>
+              
+              {selectedQuote.customerEmail && (
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Email</p>
+                  <p className="text-sm">{selectedQuote.customerEmail}</p>
+                </div>
+              )}
+              
+              {selectedQuote.customerPhone && (
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Phone</p>
+                  <p className="text-sm">{selectedQuote.customerPhone}</p>
+                </div>
+              )}
+
+              <Separator />
+
+              <div>
+                <p className="text-xs text-slate-500 uppercase font-bold mb-2">Items</p>
+                <ul className="space-y-1">
+                  {selectedQuote.items.map((item, i) => (
+                    <li key={i} className="text-sm text-slate-700">• {item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500 uppercase font-bold">Total</p>
+                <p className="text-2xl font-heading font-bold text-slate-900">${parseFloat(selectedQuote.total).toFixed(2)}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function QuoteCard({ id, client, date, items, total, status }: any) {
+function QuoteCard({ quote, onView, onDelete, onSendSms }: any) {
   const statusStyles: any = {
     "Draft": "bg-slate-100 text-slate-600",
     "Sent": "bg-blue-100 text-blue-700",
@@ -403,20 +529,35 @@ function QuoteCard({ id, client, date, items, total, status }: any) {
         <div className="flex justify-between items-start mb-4">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-lg text-slate-900">{client}</h3>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyles[status]}`}>
-                {status}
+              <h3 className="font-bold text-lg text-slate-900">{quote.customerName}</h3>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyles[quote.status]}`}>
+                {quote.status}
               </span>
             </div>
-            <p className="text-sm text-slate-500 font-medium">{id} • {date}</p>
+            <p className="text-sm text-slate-500 font-medium">#Q-{quote.id} • {new Date(quote.createdAt).toLocaleDateString()}</p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreVertical className="h-4 w-4 text-slate-400" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreVertical className="h-4 w-4 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onView}>
+                <Eye className="h-4 w-4 mr-2" /> View
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onSendSms}>
+                <Send className="h-4 w-4 mr-2" /> Send SMS
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDelete} className="text-red-600">
+                <Trash2 className="h-4 w-4 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="space-y-1 mb-4">
-          {items.map((item: string, i: number) => (
+          {quote.items.map((item: string, i: number) => (
             <div key={i} className="flex items-center gap-2 text-sm text-slate-600">
               <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
               {item}
@@ -425,15 +566,7 @@ function QuoteCard({ id, client, date, items, total, status }: any) {
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-          <p className="font-heading font-bold text-xl text-slate-900">{total}</p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-slate-600">
-              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
-            </Button>
-            <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-white">
-              <Send className="h-3.5 w-3.5 mr-1" /> Send SMS
-            </Button>
-          </div>
+          <p className="font-heading font-bold text-xl text-slate-900">${parseFloat(quote.total).toFixed(2)}</p>
         </div>
       </CardContent>
     </Card>
