@@ -32,6 +32,8 @@ export default function Quotes() {
   const [newQuoteOpen, setNewQuoteOpen] = useState(false);
   const [selectedVolume, setSelectedVolume] = useState<"1/8" | "1/4" | "1/2" | "Full" | null>(null);
   const [selectedSurcharges, setSelectedSurcharges] = useState<string[]>([]);
+  const [useCustomAmount, setUseCustomAmount] = useState(false);
+  const [customAmount, setCustomAmount] = useState("");
   const [viewQuoteOpen, setViewQuoteOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [newQuote, setNewQuote] = useState<Partial<InsertQuote>>({
@@ -124,6 +126,9 @@ export default function Quotes() {
   };
 
   const calculateTotal = () => {
+    if (useCustomAmount && customAmount) {
+      return parseFloat(customAmount).toFixed(2);
+    }
     let total = 0;
     if (selectedVolume) {
       total += volumePrices[selectedVolume];
@@ -137,6 +142,8 @@ export default function Quotes() {
   const resetForm = () => {
     setSelectedVolume(null);
     setSelectedSurcharges([]);
+    setUseCustomAmount(false);
+    setCustomAmount("");
     setNewQuote({
       customerName: "",
       customerEmail: "",
@@ -154,16 +161,24 @@ export default function Quotes() {
     }
 
     const items = [];
-    if (selectedVolume) {
-      items.push(`${selectedVolume} Truck Load`);
-    }
-    selectedSurcharges.forEach(surcharge => {
-      items.push(`${surcharge} Surcharge`);
-    });
+    if (useCustomAmount) {
+      if (!customAmount) {
+        toast({ title: "Error", description: "Please enter a custom amount", variant: "destructive" });
+        return;
+      }
+      items.push(`Custom Job: $${customAmount}`);
+    } else {
+      if (selectedVolume) {
+        items.push(`${selectedVolume} Truck Load`);
+      }
+      selectedSurcharges.forEach(surcharge => {
+        items.push(`${surcharge} Surcharge`);
+      });
 
-    if (items.length === 0) {
-      toast({ title: "Error", description: "Please select at least one item", variant: "destructive" });
-      return;
+      if (items.length === 0) {
+        toast({ title: "Error", description: "Please select at least one item or enter a custom amount", variant: "destructive" });
+        return;
+      }
     }
 
     const total = calculateTotal();
@@ -284,10 +299,12 @@ export default function Quotes() {
                 </div>
               </div>
 
+              )}
+
               <div className="space-y-4">
                 <h3 className="font-medium text-slate-900 uppercase text-sm">Surcharges & Extras</h3>
                 <div className="space-y-2">
-                  {Object.entries(surcharges).map(([label, price]) => (
+                  {!useCustomAmount && Object.entries(surcharges).map(([label, price]) => (
                     <div key={label} className="flex items-center space-x-2">
                       <input 
                         type="checkbox" 
@@ -309,6 +326,7 @@ export default function Quotes() {
                   ))}
                 </div>
               </div>
+              )}
 
               <div className="bg-blue-50 p-4 rounded-lg flex justify-between items-end border border-blue-100">
                 <div>
@@ -421,6 +439,7 @@ export default function Quotes() {
 
               <Separator />
 
+              {!useCustomAmount && (
               <div className="space-y-3">
                 <Label>Surcharges / Extras</Label>
                 <div className="space-y-2">
@@ -444,6 +463,7 @@ export default function Quotes() {
                   ))}
                 </div>
               </div>
+              )}
 
               <div className="bg-slate-50 p-4 rounded-lg flex flex-col gap-3 border border-slate-100">
                 <div>
