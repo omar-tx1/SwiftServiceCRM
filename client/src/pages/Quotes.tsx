@@ -299,12 +299,11 @@ export default function Quotes() {
                 </div>
               </div>
 
-              )}
-
+              {!useCustomAmount && (
               <div className="space-y-4">
                 <h3 className="font-medium text-slate-900 uppercase text-sm">Surcharges & Extras</h3>
                 <div className="space-y-2">
-                  {!useCustomAmount && Object.entries(surcharges).map(([label, price]) => (
+                  {Object.entries(surcharges).map(([label, price]) => (
                     <div key={label} className="flex items-center space-x-2">
                       <input 
                         type="checkbox" 
