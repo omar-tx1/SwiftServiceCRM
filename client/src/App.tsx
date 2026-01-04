@@ -17,12 +17,14 @@ import Settings from "@/pages/Settings";
 import Customers from "@/pages/Customers";
 
 import Finances from "@/pages/Finances";
+import CommandCenter from "@/pages/CommandCenter";
 
 function Router() {
   return (
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/command-center" component={CommandCenter} />
         <Route path="/quotes" component={Quotes} />
         <Route path="/schedule" component={Schedule} />
         <Route path="/jobs" component={Jobs} />
