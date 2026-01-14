@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { 
-  LayoutDashboard, 
-  Calendar, 
+  LayoutDashboard,
+  KanbanSquare,
+  Calendar,
   FileText, 
   Briefcase, 
   Users, 
@@ -17,18 +18,19 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState } from "react";
 
+const navItems = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
+  { icon: KanbanSquare, label: "Command center", href: "/command-center" },
+  { icon: Calendar, label: "Schedule", href: "/schedule" },
+  { icon: FileText, label: "Quotes", href: "/quotes" },
+  { icon: Briefcase, label: "Jobs", href: "/jobs" },
+  { icon: Users, label: "Customers", href: "/customers" },
+  { icon: DollarSign, label: "Finances", href: "/finances" },
+  { icon: Settings, label: "Settings", href: "/settings" },
+];
+
 const Sidebar = ({ className = "", onClose }: { className?: string, onClose?: () => void }) => {
   const [location] = useLocation();
-
-  const navItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-    { icon: Calendar, label: "Schedule", href: "/schedule" },
-    { icon: FileText, label: "Quotes", href: "/quotes" },
-    { icon: Briefcase, label: "Jobs", href: "/jobs" },
-    { icon: Users, label: "Customers", href: "/customers" },
-    { icon: DollarSign, label: "Finances", href: "/finances" },
-    { icon: Settings, label: "Settings", href: "/settings" },
-  ];
 
   return (
     <div className={`flex flex-col h-full bg-slate-900 text-white w-64 ${className}`}>
@@ -83,6 +85,9 @@ const Sidebar = ({ className = "", onClose }: { className?: string, onClose?: ()
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [location] = useLocation();
+
+  const activeTitle = navItems.find((item) => item.href === location)?.label || "Dashboard";
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -108,7 +113,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Sheet>
             
             <h2 className="text-xl font-semibold text-slate-800 hidden md:block">
-              Dashboard
+              {activeTitle}
             </h2>
           </div>
 

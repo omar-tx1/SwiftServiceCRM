@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Bell, Check, Trash2 } from "lucide-react";
 import {
@@ -7,13 +6,13 @@ import {
   DropdownMenuTrigger,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { useNotifications } from "@/lib/notifications";
+import { Notification, useNotifications } from "@/lib/notifications";
 
 export function NotificationBell() {
   const { notifications, markAsRead, markAllAsRead, clearAll, removeNotification } = useNotifications();
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = notifications.filter((notification) => !notification.read).length;
 
-  const getIcon = (type: string) => {
+  const getIcon = (type: Notification["type"]) => {
     switch (type) {
       case "lead":
         return "🎯";
@@ -28,7 +27,7 @@ export function NotificationBell() {
     }
   };
 
-  const getColor = (type: string) => {
+  const getColor = (type: Notification["type"]) => {
     switch (type) {
       case "lead":
         return "bg-blue-50 border-blue-200";
@@ -77,13 +76,13 @@ export function NotificationBell() {
               No notifications yet
             </div>
           ) : (
-            notifications.map((notif) => (
+            notifications.map((notif: Notification) => (
               <div
                 key={notif.id}
                 className={`p-3 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors ${
                   notif.read ? "opacity-60" : "bg-slate-50"
                 }`}
-                onClick={() => markAsRead(notif.id)}
+                onClick={() => void markAsRead(notif.id)}
               >
                 <div className="flex gap-3">
                   <span className="text-lg flex-shrink-0">{getIcon(notif.type)}</span>
@@ -95,7 +94,7 @@ export function NotificationBell() {
                       {notif.message}
                     </p>
                     <p className="text-xs text-slate-400 mt-1.5">
-                      {notif.timestamp.toLocaleTimeString()}
+                      {notif.createdAt.toLocaleTimeString()}
                     </p>
                   </div>
                   <Button
@@ -104,7 +103,7 @@ export function NotificationBell() {
                     className="h-6 w-6 flex-shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeNotification(notif.id);
+                      void removeNotification(notif.id);
                     }}
                   >
                     <Trash2 className="h-3 w-3 text-slate-400" />
